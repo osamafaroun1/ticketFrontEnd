@@ -1,0 +1,151 @@
+-- Ticket Management System - MySQL Schema
+-- Charset
+SET NAMES utf8mb4;
+SET FOREIGN_KEY_CHECKS = 0;
+
+DROP TABLE IF EXISTS ticket_status_history;
+DROP TABLE IF EXISTS tickets;
+DROP TABLE IF EXISTS issue_subtypes;
+DROP TABLE IF EXISTS issue_types;
+DROP TABLE IF EXISTS ticket_statuses;
+DROP TABLE IF EXISTS refresh_tokens;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS departments;
+DROP TABLE IF EXISTS provinces;
+DROP TABLE IF EXISTS roles;
+
+CREATE TABLE roles (
+  id TINYINT UNSIGNED PRIMARY KEY,
+  name VARCHAR(32) NOT NULL UNIQUE
+) ENGINE=InnoDB;
+
+CREATE TABLE provinces (
+  id SMALLINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(64) NOT NULL UNIQUE
+) ENGINE=InnoDB;
+
+CREATE TABLE departments (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  province_id SMALLINT UNSIGNED NOT NULL,
+  name VARCHAR(96) NOT NULL,
+  UNIQUE KEY uq_dept_province_name (province_id, name),
+  CONSTRAINT fk_departments_province FOREIGN KEY (province_id) REFERENCES provinces(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE users (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(64) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  full_name VARCHAR(128) NOT NULL,
+  phone VARCHAR(32) NULL,
+  role_id TINYINT UNSIGNED NOT NULL,
+  province_id SMALLINT UNSIGNED NULL,
+  department_id INT UNSIGNED NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_users_role FOREIGN KEY (role_id) REFERENCES roles(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_users_province FOREIGN KEY (province_id) REFERENCES provinces(id)
+    ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT fk_users_department FOREIGN KEY (department_id) REFERENCES departments(id)
+    ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+-- Optional: store multiple refresh tokens per user
+CREATE TABLE refresh_tokens (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id INT UNSIGNED NOT NULL,
+  token_hash VARCHAR(255) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  revoked_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_refresh_user (user_id),
+  CONSTRAINT fk_refresh_user FOREIGN KEY (user_id) REFERENCES users(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE ticket_statuses (
+  id TINYINT UNSIGNED PRIMARY KEY,
+  code VARCHAR(24) NOT NULL UNIQUE,
+  name_ar VARCHAR(64) NOT NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE issue_types (
+  id TINYINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  code VARCHAR(24) NOT NULL UNIQUE, -- HARDWARE | SOFTWARE
+  name_ar VARCHAR(64) NOT NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE issue_subtypes (
+  id SMALLINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  issue_type_id TINYINT UNSIGNED NOT NULL,
+  code VARCHAR(48) NOT NULL,
+  name_ar VARCHAR(96) NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  UNIQUE KEY uq_subtype (issue_type_id, code),
+  CONSTRAINT fk_subtypes_type FOREIGN KEY (issue_type_id) REFERENCES issue_types(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE tickets (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(160) NOT NULL,
+  description TEXT NOT NULL,
+  image_url VARCHAR(512) NULL,
+  ip_address VARCHAR(64) NULL,
+
+  created_by INT UNSIGNED NOT NULL,
+  province_id SMALLINT UNSIGNED NOT NULL,
+  department_id INT UNSIGNED NOT NULL,
+
+  status_id TINYINT UNSIGNED NOT NULL,
+  issue_type_id TINYINT UNSIGNED NOT NULL,
+  issue_subtype_id SMALLINT UNSIGNED NULL,
+
+  assigned_admin_id INT UNSIGNED NULL,
+
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  INDEX idx_tickets_province_status (province_id, status_id),
+  INDEX idx_tickets_department (department_id),
+  INDEX idx_tickets_created_by (created_by),
+
+  CONSTRAINT fk_tickets_user FOREIGN KEY (created_by) REFERENCES users(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_tickets_province FOREIGN KEY (province_id) REFERENCES provinces(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_tickets_department FOREIGN KEY (department_id) REFERENCES departments(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_tickets_status FOREIGN KEY (status_id) REFERENCES ticket_statuses(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_tickets_issue_type FOREIGN KEY (issue_type_id) REFERENCES issue_types(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_tickets_issue_subtype FOREIGN KEY (issue_subtype_id) REFERENCES issue_subtypes(id)
+    ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT fk_tickets_assigned_admin FOREIGN KEY (assigned_admin_id) REFERENCES users(id)
+    ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE ticket_status_history (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  ticket_id BIGINT UNSIGNED NOT NULL,
+  from_status_id TINYINT UNSIGNED NULL,
+  to_status_id TINYINT UNSIGNED NOT NULL,
+  changed_by INT UNSIGNED NOT NULL,
+  note VARCHAR(255) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_hist_ticket (ticket_id),
+  CONSTRAINT fk_hist_ticket FOREIGN KEY (ticket_id) REFERENCES tickets(id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_hist_from FOREIGN KEY (from_status_id) REFERENCES ticket_statuses(id)
+    ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT fk_hist_to FOREIGN KEY (to_status_id) REFERENCES ticket_statuses(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_hist_user FOREIGN KEY (changed_by) REFERENCES users(id)
+    ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+SET FOREIGN_KEY_CHECKS = 1;
