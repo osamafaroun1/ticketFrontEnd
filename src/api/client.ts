@@ -97,6 +97,7 @@ const mapTicket = (ticket: TicketApiRow): Ticket => ({
 
 const refreshAccessToken = async () => {
   const refreshToken = localStorage.getItem('refreshToken');
+  
   if (!refreshToken) {
     throw new Error('Missing refresh token');
   }
@@ -155,7 +156,7 @@ export async function logoutRequest() {
 }
 
 export async function getTickets() {
-  const response = await api.get<TicketApiRow[]>('/tickets');
+  const response = await api.get<TicketApiRow[]>('/tickets');  
   return response.data.map(mapTicket);
 }
 

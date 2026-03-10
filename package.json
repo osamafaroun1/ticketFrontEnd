@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "server": "nodemon --watch server --exec tsx server/src/index.ts",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -24,8 +25,8 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-router-dom": "^7.13.1",
+    "react-toastify": "^11.0.5",
     "tailwind-merge": "^3.4.0",
-    "tsx": "^4.21.0",
     "uuid": "^13.0.0",
     "zod": "^4.3.6"
   },
@@ -39,8 +40,10 @@
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "5.1.1",
+    "nodemon": "^3.1.14",
     "tailwindcss": "4.1.17",
-    "typescript": "5.9.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
     "vite": "7.2.4",
     "vite-plugin-singlefile": "2.3.0"
   }
