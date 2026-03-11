@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { toast } from 'react-toastify';
 import { User, Ticket, TicketStatus, CreateTicketPayload } from '../types';
 import { 
   loginRequest,
@@ -13,8 +14,8 @@ interface AppContextType {
   tickets: Ticket[];
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
-  createTicket: (data: CreateTicketPayload) => Promise<void>;
-  updateStatus: (id: number, status: TicketStatus) => Promise<void>;
+  createTicket: (data: CreateTicketPayload) => Promise<boolean>;
+  updateStatus: (id: number, status: TicketStatus) => Promise<boolean>;
   refreshTickets: () => Promise<void>;
   loading: boolean;
 }
@@ -26,7 +27,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
 
-  // Load user from local storage on mount
   useEffect(() => {
     const storedUser = localStorage.getItem('ticket_user');
     if (storedUser) {
@@ -34,7 +34,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  // Fetch tickets whenever user changes
   useEffect(() => {
     if (user) {
       fetchTickets();
@@ -51,6 +50,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setTickets(data);
     } catch (error) {
       console.error("Error fetching tickets", error);
+      toast.error('فشل في جلب التذاكر');
       if ((error as { response?: { status?: number } })?.response?.status === 401) {
         setUser(null);
         setTickets([]);
@@ -68,11 +68,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (userData) {
         setUser(userData);
         localStorage.setItem('ticket_user', JSON.stringify(userData));
+        toast.success(`مرحباً ${userData.fullName}! تم تسجيل الدخول بنجاح 🎉`);
         return true;
       }
       return false;
     } catch (e) {
       console.error(e);
+      toast.error('فشل تسجيل الدخول! تحقق من البيانات');
       return false;
     } finally {
       setLoading(false);
@@ -80,34 +82,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logout = async () => {
-    await logoutRequest();
+    try {
+      await logoutRequest();
+      toast.info('تم تسجيل الخروج بنجاح');
+    } catch {
+      // Continue with logout even if request fails
+    }
     setUser(null);
     setTickets([]);
     localStorage.removeItem('ticket_user');
   };
 
-  const createTicket = async (data: CreateTicketPayload) => {
-    if (!user) return;
+  const createTicket = async (data: CreateTicketPayload): Promise<boolean> => {
+    if (!user) return false;
     setLoading(true);
     try {
       await createTicketRequest(data);
-      // Re-fetch tickets to update the list immediately
       await fetchTickets();
+      toast.success('تم إنشاء التذكرة بنجاح! ✅');
+      return true;
     } catch (e) {
       console.error("Error creating ticket", e);
+      toast.error('فشل في إنشاء التذكرة');
+      return false;
     } finally {
       setLoading(false);
     }
   };
 
-  const updateStatus = async (id: number, status: TicketStatus) => {
+  const updateStatus = async (id: number, status: TicketStatus): Promise<boolean> => {
     setLoading(true);
     try {
       await updateTicketStatusRequest(id, status);
-      // Re-fetch to sync state
       await fetchTickets();
+      
+      const statusMessages: Record<TicketStatus, string> = {
+        [TicketStatus.OPEN]: 'تم فتح التذكرة',
+        [TicketStatus.IN_PROGRESS]: 'التذكرة قيد المعالجة الآن',
+        [TicketStatus.SOLVED]: 'تم حل التذكرة بنجاح! 🎉',
+        [TicketStatus.POSTPONED]: 'تم تأجيل التذكرة',
+        [TicketStatus.CLOSED]: 'تم إغلاق التذكرة',
+      };
+      
+      toast.success(statusMessages[status]);
+      return true;
     } catch (e) {
       console.error("Error updating status", e);
+      toast.error('فشل في تحديث حالة التذكرة');
+      return false;
     } finally {
       setLoading(false);
     }
