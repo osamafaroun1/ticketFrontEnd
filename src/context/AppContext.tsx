@@ -1,12 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { User, Ticket, TicketStatus, CreateTicketPayload } from '../types';
-import { 
+import {
   loginRequest,
   logoutRequest,
   getTickets as apiGetTickets,
   createTicketRequest,
   updateTicketStatusRequest,
+  deleteTicketRequest,
 } from '../api/client';
 
 interface AppContextType {
@@ -16,6 +17,7 @@ interface AppContextType {
   logout: () => Promise<void>;
   createTicket: (data: CreateTicketPayload) => Promise<boolean>;
   updateStatus: (id: number, status: TicketStatus) => Promise<boolean>;
+  deleteTicket: (id: number) => Promise<boolean>;
   refreshTickets: () => Promise<void>;
   loading: boolean;
 }
@@ -30,7 +32,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     const storedUser = localStorage.getItem('ticket_user');
     if (storedUser) {
-      setUser(JSON.parse(storedUser));
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch {
+        localStorage.removeItem('ticket_user');
+      }
     }
   }, []);
 
@@ -49,7 +55,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const data = await apiGetTickets();
       setTickets(data);
     } catch (error) {
-      console.error("Error fetching tickets", error);
+      console.error('Error fetching tickets', error);
       toast.error('فشل في جلب التذاكر');
       if ((error as { response?: { status?: number } })?.response?.status === 401) {
         setUser(null);
@@ -68,13 +74,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (userData) {
         setUser(userData);
         localStorage.setItem('ticket_user', JSON.stringify(userData));
-        toast.success(`مرحباً ${userData.fullName}! تم تسجيل الدخول بنجاح 🎉`);
+        toast.success(`مرحباً ${userData.fullName}، تم تسجيل الدخول بنجاح`);
         return true;
       }
       return false;
     } catch (e) {
       console.error(e);
-      toast.error('فشل تسجيل الدخول! تحقق من البيانات');
+      toast.error('فشل تسجيل الدخول. تحقق من اسم المستخدم وكلمة المرور');
       return false;
     } finally {
       setLoading(false);
@@ -84,13 +90,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const logout = async () => {
     try {
       await logoutRequest();
-      toast.info('تم تسجيل الخروج بنجاح');
     } catch {
       // Continue with logout even if request fails
     }
     setUser(null);
     setTickets([]);
     localStorage.removeItem('ticket_user');
+    toast.info('تم تسجيل الخروج');
   };
 
   const createTicket = async (data: CreateTicketPayload): Promise<boolean> => {
@@ -99,10 +105,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       await createTicketRequest(data);
       await fetchTickets();
-      toast.success('تم إنشاء التذكرة بنجاح! ✅');
+      toast.success('تم إنشاء التذكرة بنجاح');
       return true;
     } catch (e) {
-      console.error("Error creating ticket", e);
+      console.error('Error creating ticket', e);
       toast.error('فشل في إنشاء التذكرة');
       return false;
     } finally {
@@ -114,20 +120,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setLoading(true);
     try {
       await updateTicketStatusRequest(id, status);
-      await fetchTickets();
-      
+      setTickets((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, status } : t))
+      );
       const statusMessages: Record<TicketStatus, string> = {
         [TicketStatus.OPEN]: 'تم فتح التذكرة',
         [TicketStatus.IN_PROGRESS]: 'التذكرة قيد المعالجة الآن',
-        [TicketStatus.SOLVED]: 'تم حل التذكرة بنجاح! 🎉',
+        [TicketStatus.SOLVED]: 'تم حل التذكرة بنجاح',
         [TicketStatus.POSTPONED]: 'تم تأجيل التذكرة',
         [TicketStatus.CLOSED]: 'تم إغلاق التذكرة',
       };
-      
       toast.success(statusMessages[status]);
       return true;
     } catch (e) {
-      console.error("Error updating status", e);
+      console.error('Error updating status', e);
       toast.error('فشل في تحديث حالة التذكرة');
       return false;
     } finally {
@@ -135,17 +141,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const deleteTicket = async (id: number): Promise<boolean> => {
+    setLoading(true);
+    try {
+      await deleteTicketRequest(id);
+      setTickets((prev) => prev.filter((t) => t.id !== id));
+      toast.success('تم حذف التذكرة بنجاح');
+      return true;
+    } catch (e) {
+      console.error('Error deleting ticket', e);
+      toast.error('فشل في حذف التذكرة');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <AppContext.Provider value={{ 
-      user, 
-      tickets, 
-      login, 
-      logout, 
-      createTicket, 
-      updateStatus, 
-      refreshTickets: fetchTickets,
-      loading 
-    }}>
+    <AppContext.Provider
+      value={{
+        user,
+        tickets,
+        login,
+        logout,
+        createTicket,
+        updateStatus,
+        deleteTicket,
+        refreshTickets: fetchTickets,
+        loading,
+      }}
+    >
       {children}
     </AppContext.Provider>
   );
@@ -153,8 +178,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
 export const useApp = () => {
   const context = useContext(AppContext);
-  if (!context) {
-    throw new Error('useApp must be used within an AppProvider');
-  }
+  if (!context) throw new Error('useApp must be used within an AppProvider');
   return context;
 };

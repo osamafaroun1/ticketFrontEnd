@@ -50,6 +50,15 @@ type TicketApiRow = {
   issueSubtypeNameAr: string | null;
 };
 
+export type TicketFilters = {
+  statusId?: number;
+  provinceId?: number;
+  departmentId?: number;
+  issueTypeId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
 const clearTokens = () => {
   localStorage.removeItem('accessToken');
   localStorage.removeItem('refreshToken');
@@ -97,11 +106,7 @@ const mapTicket = (ticket: TicketApiRow): Ticket => ({
 
 const refreshAccessToken = async () => {
   const refreshToken = localStorage.getItem('refreshToken');
-  
-  if (!refreshToken) {
-    throw new Error('Missing refresh token');
-  }
-
+  if (!refreshToken) throw new Error('Missing refresh token');
   const response = await axios.post<{ accessToken: string }>(`${API_BASE}/auth/refresh`, { refreshToken });
   localStorage.setItem('accessToken', response.data.accessToken);
   return response.data.accessToken;
@@ -132,7 +137,6 @@ api.interceptors.response.use(
         return Promise.reject(refreshError);
       }
     }
-
     return Promise.reject(error);
   }
 );
@@ -147,21 +151,31 @@ export async function loginRequest(username: string, password: string) {
 export async function logoutRequest() {
   const refreshToken = localStorage.getItem('refreshToken');
   try {
-    if (refreshToken) {
-      await api.post('/auth/logout', { refreshToken });
-    }
+    if (refreshToken) await api.post('/auth/logout', { refreshToken });
   } finally {
     clearTokens();
   }
 }
 
-export async function getTickets() {
-  const response = await api.get<TicketApiRow[]>('/tickets');  
+export async function getTickets(filters?: TicketFilters) {
+  const params: Record<string, string | number> = {};
+  if (filters?.statusId) params.statusId = filters.statusId;
+  if (filters?.provinceId) params.provinceId = filters.provinceId;
+  if (filters?.departmentId) params.departmentId = filters.departmentId;
+  if (filters?.issueTypeId) params.issueTypeId = filters.issueTypeId;
+  if (filters?.dateFrom) params.dateFrom = filters.dateFrom;
+  if (filters?.dateTo) params.dateTo = filters.dateTo;
+
+  const response = await api.get<TicketApiRow[]>('/tickets', { params });
   return response.data.map(mapTicket);
 }
 
 export async function createTicketRequest(payload: CreateTicketPayload) {
   await api.post('/tickets', payload);
+}
+
+export async function deleteTicketRequest(ticketId: number) {
+  await api.delete(`/tickets/${ticketId}`);
 }
 
 const statusToId: Record<TicketStatus, number> = {
@@ -173,9 +187,7 @@ const statusToId: Record<TicketStatus, number> = {
 };
 
 export async function updateTicketStatusRequest(ticketId: number, status: TicketStatus) {
-  await api.patch(`/tickets/${ticketId}/status`, {
-    statusId: statusToId[status],
-  });
+  await api.patch(`/tickets/${ticketId}/status`, { statusId: statusToId[status] });
 }
 
 export async function getIssueTypes() {
@@ -186,6 +198,18 @@ export async function getIssueTypes() {
 export async function getIssueSubtypes(issueTypeId: number) {
   const response = await api.get<IssueSubtype[]>('/meta/issue-subtypes', {
     params: { issueTypeId },
+  });
+  return response.data;
+}
+
+export async function getProvinces() {
+  const response = await api.get<{ id: number; name: string }[]>('/meta/provinces');
+  return response.data;
+}
+
+export async function getDepartments(provinceId: number) {
+  const response = await api.get<{ id: number; provinceId: number; name: string }[]>('/meta/departments', {
+    params: { provinceId },
   });
   return response.data;
 }
