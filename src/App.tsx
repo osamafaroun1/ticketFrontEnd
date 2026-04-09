@@ -46,7 +46,7 @@ const App: React.FC = () => {
     <AppProvider>
       <AppContent />
       <ToastContainer
-        position="top-left"
+        position="top-right"
         autoClose={4000}
         hideProgressBar={false}
         newestOnTop
