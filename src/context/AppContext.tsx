@@ -2,8 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { User, Ticket, TicketStatus, CreateTicketPayload } from '../types';
 import {
-  loginRequest,
-  logoutRequest,
+  loginRequest, logoutRequest,
   getTickets as apiGetTickets,
   createTicketRequest,
   updateTicketStatusRequest,
@@ -20,6 +19,7 @@ interface AppContextType {
   deleteTicket: (id: number) => Promise<boolean>;
   refreshTickets: () => Promise<void>;
   loading: boolean;
+  loggingOut: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -27,25 +27,19 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('ticket_user');
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch {
-        localStorage.removeItem('ticket_user');
-      }
+    const stored = localStorage.getItem('ticket_user');
+    if (stored) {
+      try { setUser(JSON.parse(stored)); } catch { localStorage.removeItem('ticket_user'); }
     }
   }, []);
 
   useEffect(() => {
-    if (user) {
-      fetchTickets();
-    } else {
-      setTickets([]);
-    }
+    if (user) fetchTickets();
+    else setTickets([]);
   }, [user]);
 
   const fetchTickets = async () => {
@@ -55,11 +49,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const data = await apiGetTickets();
       setTickets(data);
     } catch (error) {
-      console.error('Error fetching tickets', error);
       toast.error('فشل في جلب التذاكر');
-      if ((error as { response?: { status?: number } })?.response?.status === 401) {
-        setUser(null);
-        setTickets([]);
+      if ((error as any)?.response?.status === 401) {
+        setUser(null); setTickets([]);
         localStorage.removeItem('ticket_user');
       }
     } finally {
@@ -71,15 +63,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setLoading(true);
     try {
       const userData = await loginRequest(username, password);
-      if (userData) {
-        setUser(userData);
-        localStorage.setItem('ticket_user', JSON.stringify(userData));
-        toast.success(`مرحباً ${userData.fullName}، تم تسجيل الدخول بنجاح`);
-        return true;
-      }
-      return false;
-    } catch (e) {
-      console.error(e);
+      setUser(userData);
+      localStorage.setItem('ticket_user', JSON.stringify(userData));
+      toast.success(`مرحباً ${userData.fullName}، تم تسجيل الدخول بنجاح`);
+      return true;
+    } catch {
       toast.error('فشل تسجيل الدخول. تحقق من اسم المستخدم وكلمة المرور');
       return false;
     } finally {
@@ -88,10 +76,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logout = async () => {
+    setLoggingOut(true);
     try {
       await logoutRequest();
     } catch {
-      // Continue with logout even if request fails
+      // continue regardless
+    } finally {
+      setLoggingOut(false);
     }
     setUser(null);
     setTickets([]);
@@ -100,15 +91,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const createTicket = async (data: CreateTicketPayload): Promise<boolean> => {
-    if (!user) return false;
     setLoading(true);
     try {
       await createTicketRequest(data);
       await fetchTickets();
       toast.success('تم إنشاء التذكرة بنجاح');
       return true;
-    } catch (e) {
-      console.error('Error creating ticket', e);
+    } catch {
       toast.error('فشل في إنشاء التذكرة');
       return false;
     } finally {
@@ -120,20 +109,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setLoading(true);
     try {
       await updateTicketStatusRequest(id, status);
-      setTickets((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, status } : t))
-      );
-      const statusMessages: Record<TicketStatus, string> = {
+      setTickets((prev) => prev.map((t) => t.id === id ? { ...t, status } : t));
+      const messages: Record<TicketStatus, string> = {
         [TicketStatus.OPEN]: 'تم فتح التذكرة',
         [TicketStatus.IN_PROGRESS]: 'التذكرة قيد المعالجة الآن',
         [TicketStatus.SOLVED]: 'تم حل التذكرة بنجاح',
         [TicketStatus.POSTPONED]: 'تم تأجيل التذكرة',
         [TicketStatus.CLOSED]: 'تم إغلاق التذكرة',
       };
-      toast.success(statusMessages[status]);
+      toast.success(messages[status]);
       return true;
-    } catch (e) {
-      console.error('Error updating status', e);
+    } catch {
       toast.error('فشل في تحديث حالة التذكرة');
       return false;
     } finally {
@@ -148,8 +134,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setTickets((prev) => prev.filter((t) => t.id !== id));
       toast.success('تم حذف التذكرة بنجاح');
       return true;
-    } catch (e) {
-      console.error('Error deleting ticket', e);
+    } catch {
       toast.error('فشل في حذف التذكرة');
       return false;
     } finally {
@@ -158,26 +143,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   return (
-    <AppContext.Provider
-      value={{
-        user,
-        tickets,
-        login,
-        logout,
-        createTicket,
-        updateStatus,
-        deleteTicket,
-        refreshTickets: fetchTickets,
-        loading,
-      }}
-    >
+    <AppContext.Provider value={{
+      user, tickets, login, logout, createTicket,
+      updateStatus, deleteTicket, refreshTickets: fetchTickets,
+      loading, loggingOut,
+    }}>
       {children}
     </AppContext.Provider>
   );
 };
 
 export const useApp = () => {
-  const context = useContext(AppContext);
-  if (!context) throw new Error('useApp must be used within an AppProvider');
-  return context;
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error('useApp must be used within AppProvider');
+  return ctx;
 };
